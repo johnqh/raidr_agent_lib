@@ -5,10 +5,12 @@
     "": {
       "name": "@sudobility/raidr_agent_lib",
       "dependencies": {
-        "@sudobility/raidr_types": "^0.1.8",
+        "@sudobility/raidr_types": "^0.1.9",
       },
       "devDependencies": {
         "@eslint/js": "^9.38.0",
+        "@sudobility/raidr_agent_client": "^0.0.2",
+        "@sudobility/raidr_agent_types": "^0.0.2",
         "@sudobility/types": "^1.9.68",
         "@tanstack/react-query": "^5.90.5",
         "@testing-library/react": "^16.3.2",
@@ -30,6 +32,8 @@
         "zustand": "^5.0.8",
       },
       "peerDependencies": {
+        "@sudobility/raidr_agent_client": "^0.0.2",
+        "@sudobility/raidr_agent_types": "^0.0.2",
         "@sudobility/types": "^1.9.68",
         "@tanstack/react-query": ">=5.0.0",
         "react": ">=18.0.0",
@@ -138,7 +142,11 @@
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
-    "@sudobility/raidr_types": ["@sudobility/raidr_types@0.1.8", "", { "peerDependencies": { "@sudobility/types": "^1.9.68", "zod": "^4.0.0" }, "optionalPeers": ["zod"] }, "sha512-7rpVwxnWAElLX1H2iUHbPFqrVyi/fZmk1BJSntiyXH5R1vSkOghm8CB2Oaj876Sy/SSGSthf1tw0lT5AVRWR/A=="],
+    "@sudobility/raidr_agent_client": ["@sudobility/raidr_agent_client@0.0.2", "", { "peerDependencies": { "@sudobility/types": "^1.9.68", "@tanstack/react-query": ">=5.0.0", "react": ">=18.0.0" } }, "sha512-Q+nO+piWTAAVDwCeqPd6NACIqjg5F3CYLZjE1jJLtU8mhrjIGC/nbKDwhZLpikrzo0Qg/QoDAW9dA+SysISUVw=="],
+
+    "@sudobility/raidr_agent_types": ["@sudobility/raidr_agent_types@0.0.2", "", { "peerDependencies": { "@sudobility/types": "^1.9.68" } }, "sha512-nJViZT4zE6LU4iqrZ8cFK1p/1pTCCnvMCeEMwSRKDVr6o+A6NjHXglelp4+8Xrmy+0exnB29srfu4zpplLXe+Q=="],
+
+    "@sudobility/raidr_types": ["@sudobility/raidr_types@0.1.9", "", { "peerDependencies": { "@sudobility/types": "^1.9.68", "zod": "^4.0.0" }, "optionalPeers": ["zod"] }, "sha512-jSjsKVInreKhMKeibqDZePucMS91Tns4xRjWILhnfcaiE0Z8Ne4G351B5A5YYfNVtN19bNFulYpUHWQJ2c+7nw=="],
 
     "@sudobility/types": ["@sudobility/types@1.9.68", "", {}, "sha512-4LL5+UfcqQcc0PKKR/z/PqS6j9DQPVkkjL+3oOW+Bwx0TAu1SVKAlPhlt/9ruNMW+abcHuZoFvbOVD5gdYBSGw=="],
 
