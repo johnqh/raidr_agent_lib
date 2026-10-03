@@ -1,0 +1,75 @@
+{
+  // Spelling and language
+  "cSpell.enabled": false,
+
+  // TypeScript and JavaScript
+  "typescript.preferences.includePackageJsonAutoImports": "on",
+  "typescript.suggest.autoImports": true,
+  "typescript.suggest.completeFunctionCalls": true,
+  "javascript.suggest.autoImports": true,
+  "typescript.updateImportsOnFileMove.enabled": "always",
+
+  // Code formatting and linting
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports": "explicit"
+  },
+
+  // File associations for better syntax highlighting
+  "files.associations": {
+    "*.interface.ts": "typescript",
+    "*.web.ts": "typescript",
+    "*.reactnative.ts": "typescript",
+    "*.operations.ts": "typescript"
+  },
+
+  // Explorer settings for better file organization
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "*.ts": "${capture}.test.ts,${capture}.spec.ts,${capture}.d.ts,${capture}.web.ts,${capture}.reactnative.ts",
+    "index.ts": "*.interface.ts,*.operations.ts",
+    "package.json": ".npmrc,.nvmrc,pnpm-lock.yaml,yarn.lock,package-lock.json"
+  },
+
+  // Search settings to focus on relevant code
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.git": true,
+    "**/coverage": true,
+    "**/*.log": true
+  },
+
+  // Auto-save for better collaboration
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 1000,
+
+  // Breadcrumbs for better navigation
+  "breadcrumbs.enabled": true,
+  "breadcrumbs.symbolPath": "on",
+
+  // Git settings
+  "git.enableSmartCommit": true,
+  "git.confirmSync": false,
+  "git.autofetch": true,
+
+  // Emmet for faster HTML/JSX editing
+  "emmet.includeLanguages": {
+    "typescript": "typescriptreact",
+    "javascript": "javascriptreact"
+  },
+
+  // IntelliSense settings for better autocomplete
+  "typescript.suggest.includeAutomaticOptionalChainCompletions": true,
+  "typescript.preferences.quoteStyle": "single",
+  "typescript.suggest.enabled": true,
+
+  // File watchers
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/dist/**": true,
+    "**/.git/**": true
+  }
+}
