@@ -1,6 +1,6 @@
 {
   "name": "@sudobility/raidr_agent_lib",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Business logic library for RaidrAgent with Zustand stores",
   "type": "module",
   "main": "dist/index.js",
@@ -75,6 +75,6 @@
     "url": "https://github.com/johnqh/raidr_agent_lib/issues"
   },
   "dependencies": {
-    "@sudobility/raidr_types": "^0.1.9"
+    "@sudobility/raidr_types": "^0.1.10"
   }
 }
