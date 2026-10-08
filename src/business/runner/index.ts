@@ -30,6 +30,7 @@ export {
   MAX_EXTRACTED,
   MAX_FORM_FIELDS,
   MAX_PREPARED_TOOLS,
+  dedupeSchema,
   pickBestSchema,
   planSchema,
   prepareSchema,
@@ -48,7 +49,10 @@ export {
   toolEndpoint,
 } from './pageUrl';
 export {
+  dedupeResults,
+  type DedupeInput,
   MAX_BEST_CANDIDATES,
+  MAX_DEDUPE_RESULTS,
   MAX_MERGED_FIELDS,
   MAX_PREPARE_TOOLS,
   MAX_RANKED_SITES,

@@ -174,4 +174,45 @@ describe('createLocalRunRecorder', () => {
     });
     expect(recorder.toImportRequest().best).toBeNull();
   });
+
+  it('keeps groups, dropping members whose result was not uploaded', () => {
+    const recorder = createLocalRunRecorder({ request: 'r', intent });
+    for (const id of ['a:0', 'b:0']) {
+      recorder.writer.write({
+        type: 'data-result',
+        id: `result:${id}`,
+        data: {
+          id,
+          apiHost: id[0]!,
+          siteTitle: '',
+          title: 't',
+          summary: '',
+          imageUrl: '',
+          sourceUrl: '',
+          pageUrl: '',
+          recipe: null,
+          fields: [],
+        },
+      });
+    }
+    expect(recorder.toImportRequest().groups).toEqual([]);
+    const pair = {
+      members: [
+        { resultId: 'a:0', note: '$85' },
+        { resultId: 'b:0', note: '$90' },
+      ],
+    };
+    const ghost = {
+      members: [
+        { resultId: 'a:0', note: '' },
+        { resultId: 'zzz', note: '' },
+      ],
+    };
+    recorder.writer.write({
+      type: 'data-groups',
+      id: 'groups',
+      data: { groups: [pair, ghost] },
+    });
+    expect(recorder.toImportRequest().groups).toEqual([pair]);
+  });
 });

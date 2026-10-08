@@ -13,6 +13,8 @@ import type {
   FormField,
   GeoLocation,
   PrepareResponse,
+  ResultGroup,
+  ResultGroupMember,
   ResultItem,
   SitePlan,
   ToolAuth,
@@ -20,6 +22,7 @@ import type {
 import type { AiTransport, SiteCatalog, SiteContextSource } from './runner';
 import { loadSiteContext, rankTools } from './runner';
 import {
+  dedupeSchema,
   MAX_PREPARED_TOOLS,
   pickBestSchema,
   prepareSchema,
@@ -74,6 +77,9 @@ export async function understandIntent(
 /** Most sites `rank-sites` keeps. */
 export const MAX_RANKED_SITES = 12;
 
+/** Tools per candidate shown to `rank-sites` (the most relevant ones). */
+export const RANK_TOOLS_PER_SITE = 8;
+
 export interface RankSitesInput {
   request: string;
   intent: AgentIntent;
@@ -81,28 +87,64 @@ export interface RankSitesInput {
   candidates: CandidateSite[];
 }
 
+/** A candidate's most relevant tools, as `rank-sites` sees them. */
+async function rankingTools(
+  catalog: SiteCatalog,
+  apiHost: string,
+  text: string
+): Promise<Array<{ name: string; description: string; params: string[] }>> {
+  try {
+    const manifest = await catalog.manifest(apiHost);
+    return rankTools(manifest.tools, text)
+      .slice(0, RANK_TOOLS_PER_SITE)
+      .map(t => ({
+        name: t.name,
+        description: (t.description ?? '').slice(0, 160),
+        params: Object.keys(
+          (t.inputSchema as { properties?: Record<string, unknown> })
+            .properties ?? {}
+        ).slice(0, 12),
+      }));
+  } catch {
+    // An unreadable manifest just ranks on the description.
+    return [];
+  }
+}
+
 /**
  * `rank-sites`: the label matches ordered best first, unsuitable ones left
  * out, each with a `reason`. Only sites from `candidates` survive (deduped,
  * at most {@link MAX_RANKED_SITES}). An answer that does not parse keeps the
  * candidates' own order.
+ *
+ * With a `catalog`, each candidate also carries its most relevant tools
+ * (name, description, parameter names), so a site whose tools cannot take
+ * the request's search terms ranks below one that can.
  */
 export async function rankSites(
   ai: AiTransport,
-  input: RankSitesInput
+  input: RankSitesInput,
+  catalog?: SiteCatalog
 ): Promise<CandidateSite[]> {
   if (input.candidates.length === 0) return [];
   const byHost = new Map(input.candidates.map(c => [c.apiHost, c]));
+  const text = `${input.request} ${input.intent.query}`;
+  const tools = catalog
+    ? await Promise.all(
+        input.candidates.map(c => rankingTools(catalog, c.apiHost, text))
+      )
+    : [];
   const output = await ai.invoke('rank-sites', {
     request: input.request,
     intent: input.intent,
     ...(input.country ? { country: input.country } : {}),
-    sites: input.candidates.map(c => ({
+    sites: input.candidates.map((c, i) => ({
       apiHost: c.apiHost,
       title: c.title,
       description: c.description,
       labels: c.labels,
       toolCount: c.toolCount,
+      ...(tools[i]?.length ? { tools: tools[i] } : {}),
     })),
   });
   const parsed = rankSitesSchema.safeParse(output);
@@ -335,4 +377,68 @@ export async function pickBest(
   if (!parsed.success || !shown.some(r => r.id === parsed.data.bestId))
     return { resultId: first.id, reason: '' };
   return { resultId: parsed.data.bestId, reason: parsed.data.reason };
+}
+
+// =============================================================================
+// dedupe
+// =============================================================================
+
+/** Most results `dedupe` compares. */
+export const MAX_DEDUPE_RESULTS = 60;
+
+export interface DedupeInput {
+  request: string;
+  intent: AgentIntent;
+  results: ResultItem[];
+}
+
+/**
+ * `dedupe`: results that are the same thing (the same concert on two ticket
+ * sites), to show as one item. Only known ids count, each in one group, and
+ * only groups of two or more survive; members keep the results' order, so
+ * the first-listed copy is the one shown. A model error or an answer that
+ * does not parse merges nothing.
+ */
+export async function dedupeResults(
+  ai: AiTransport,
+  input: DedupeInput
+): Promise<ResultGroup[]> {
+  if (input.results.length < 2) return [];
+  const shown = input.results.slice(0, MAX_DEDUPE_RESULTS);
+  let output: unknown;
+  try {
+    output = await ai.invoke('dedupe', {
+      request: input.request,
+      intent: input.intent,
+      results: shown.map(r => ({
+        id: r.id,
+        site: r.siteTitle || r.apiHost,
+        title: r.title,
+        summary: r.summary,
+        fields: r.fields,
+      })),
+    });
+  } catch {
+    return [];
+  }
+  const parsed = dedupeSchema.safeParse(output);
+  if (!parsed.success) return [];
+  const order = new Map(shown.map((r, i) => [r.id, i]));
+  const taken = new Set<string>();
+  const groups: ResultGroup[] = [];
+  for (const group of parsed.data.groups) {
+    const members: ResultGroupMember[] = [];
+    for (const { id, note } of group.members) {
+      if (!order.has(id) || taken.has(id)) continue;
+      taken.add(id);
+      members.push({ resultId: id, note });
+    }
+    if (members.length < 2) {
+      for (const m of members) taken.delete(m.resultId);
+      continue;
+    }
+    members.sort((a, b) => order.get(a.resultId)! - order.get(b.resultId)!);
+    groups.push({ members });
+  }
+  return groups;
 }

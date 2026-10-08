@@ -21,6 +21,7 @@ export const STEP_ENDPOINTS: Record<AgentStep, string> = {
   plan: 'plan-calls',
   extract: 'extract-results',
   'pick-best': 'pick-best',
+  dedupe: 'dedupe-results',
 };
 
 const str = (description: string, extra: Json = {}): Json => ({
@@ -234,6 +235,20 @@ const rankInput: Json = {
           description: str('What the site is.'),
           labels: { type: 'array', items: { type: 'string' } },
           toolCount: { type: 'integer', description: 'Number of API tools.' },
+          tools: {
+            type: 'array',
+            description:
+              "The site's API tools most relevant to the request: name, description and parameter names.",
+            items: {
+              type: 'object',
+              properties: {
+                name: str('Tool name.'),
+                description: str('What it does.'),
+                params: { type: 'array', items: { type: 'string' } },
+              },
+              required: ['name'],
+            },
+          },
         },
         required: ['apiHost', 'title'],
       },
@@ -461,6 +476,21 @@ const extractInput: Json = {
   properties: {
     request: str("The user's request."),
     resultKind: str('The kind of answer wanted.'),
+    query: str('Search query.'),
+    what: str('The action.'),
+    how: str('Constraints or preferences, or null.'),
+    when: {
+      type: 'object',
+      description: 'When (text, start, end ISO 8601), or null.',
+    },
+    where: {
+      type: 'object',
+      description: 'Where (kind, places), or null.',
+    },
+    inputs: {
+      type: 'object',
+      description: "The user's answers to the prepared form, by field name.",
+    },
     location,
     site,
     responses: {
@@ -616,6 +646,71 @@ const pickBestOutput: Json = {
   required: ['bestId', 'reason'],
 };
 
+// =============================================================================
+// dedupe-results
+// =============================================================================
+
+const dedupeInput: Json = {
+  type: 'object',
+  properties: {
+    request: str("The user's request."),
+    intent: intentInput,
+    results: {
+      type: 'array',
+      description: 'Results from every site, in display order.',
+      items: {
+        type: 'object',
+        properties: {
+          id: str('Result id; copy it into members[].id.'),
+          site: str('Site it came from.'),
+          title: str('Title.'),
+          summary: str('Summary.'),
+          fields: {
+            type: 'array',
+            items: { type: 'object' },
+            description: 'label/value facts.',
+          },
+        },
+        required: ['id', 'title'],
+      },
+    },
+  },
+  required: ['request', 'intent', 'results'],
+};
+
+const dedupeOutput: Json = {
+  type: 'object',
+  properties: {
+    groups: {
+      type: 'array',
+      description:
+        'Sets of results that are the same real-world thing. Only sets of two or more; results with no duplicate are left out.',
+      items: {
+        type: 'object',
+        properties: {
+          members: {
+            type: 'array',
+            description: 'The duplicates, each once.',
+            items: {
+              type: 'object',
+              properties: {
+                id: str('Result id, exactly as given.'),
+                note: str(
+                  'A few words that set this copy apart from the others (price, section, ticket type, seller, room), e.g. "$85 · GA". Empty when nothing differs.',
+                  { maxLength: 120 }
+                ),
+              },
+              required: ['id', 'note'],
+            },
+          },
+        },
+        required: ['members'],
+      },
+    },
+  },
+  required: ['groups'],
+};
+
 /** Input and output JSON Schemas of every step's endpoint. */
 export const STEP_SCHEMAS: Record<AgentStep, { input: Json; output: Json }> = {
   understand: { input: understandInput, output: understandOutput },
@@ -624,4 +719,5 @@ export const STEP_SCHEMAS: Record<AgentStep, { input: Json; output: Json }> = {
   plan: { input: planInput, output: planOutput },
   extract: { input: extractInput, output: extractOutput },
   'pick-best': { input: pickBestInput, output: pickBestOutput },
+  dedupe: { input: dedupeInput, output: dedupeOutput },
 };

@@ -32,6 +32,7 @@ import type {
   BestData,
   CallData,
   RaidrAgentDataParts,
+  ResultGroup,
   ResultItem,
   ResultSource,
   RunRequest,
@@ -41,7 +42,7 @@ import type {
 import { extractSchema, planSchema } from './schemas';
 import { randomId } from './ids';
 import { buildPageUrl, toolEndpoint } from './pageUrl';
-import { pickBest } from './steps';
+import { dedupeResults, pickBest } from './steps';
 
 /** Most tools shown to the planner per site. */
 export const MAX_TOOLS = 40;
@@ -154,6 +155,8 @@ export interface RunOutcome {
   results: ResultItem[];
   /** The chosen result of a `single`/`best` run, also sent as `data-best`. */
   best: BestData | null;
+  /** Merged duplicates of an `all` run, also sent as `data-groups`. */
+  groups: ResultGroup[];
 }
 
 /** Words of a text, for ranking tools against the request. */
@@ -243,6 +246,19 @@ interface KeptResponse {
 }
 
 /** The six W's the planner sees, without the classifier's bookkeeping. */
+/** JSON with object keys sorted, so equal arguments give equal strings. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.entries(v as Record<string, unknown>).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0
+          )
+        )
+      : v
+  );
+}
+
 function intentDetails(intent: RunRequest['intent']) {
   return {
     what: intent.what ?? intent.intent,
@@ -307,6 +323,8 @@ export async function runSite(
     const responses: KeptResponse[] = [];
     /** HTTP statuses of the calls that reached the site. */
     const statuses: Array<number | undefined> = [];
+    /** Calls already made (tool + arguments); models re-plan them anyway. */
+    const made = new Set<string>();
     for (let step = 0; step < (options.maxSteps ?? 4); step++) {
       if (options.signal?.aborted) break;
       const planned = planSchema.safeParse(
@@ -337,6 +355,7 @@ export async function runSite(
       )
         break;
       status('calling');
+      let fresh = 0;
       for (const call of planned.data.calls) {
         let args: Record<string, unknown> = {};
         try {
@@ -352,6 +371,10 @@ export async function runSite(
           });
           continue;
         }
+        const key = `${call.tool} ${canonicalJson(args)}`;
+        if (made.has(key)) continue;
+        made.add(key);
+        fresh++;
         const tool = toolByName.get(call.tool);
         if (!tool) {
           history.push({
@@ -428,6 +451,8 @@ export async function runSite(
         writer.write({ type: 'data-call', id: `call:${callId}`, data: done });
         await options.onCall?.(done);
       }
+      // Only repeats this round: the planner has nothing new to try.
+      if (fresh === 0) break;
     }
 
     if (responses.length === 0) {
@@ -461,6 +486,14 @@ export async function runSite(
       await deps.ai.invoke('extract', {
         request: input.request,
         resultKind: input.intent.resultKind,
+        query: input.intent.query,
+        what: input.intent.what ?? input.intent.intent,
+        how: input.intent.how ?? null,
+        when: input.intent.when ?? null,
+        where: input.intent.where ?? null,
+        ...(input.inputs && Object.keys(input.inputs).length > 0
+          ? { inputs: input.inputs }
+          : {}),
         ...withLocation,
         site: { title, apiHost },
         responses: shown.map(r => ({
@@ -577,5 +610,16 @@ export async function runSites(
     });
     if (best) writer.write({ type: 'data-best', id: 'best', data: best });
   }
-  return { sites, results, best };
+  // `all` lists everything, so the same thing from two sites shows once.
+  let groups: ResultGroup[] = [];
+  if (selection === 'all' && results.length > 1 && !options.signal?.aborted) {
+    groups = await dedupeResults(deps.ai, {
+      request: input.request,
+      intent: input.intent,
+      results,
+    });
+    if (groups.length > 0)
+      writer.write({ type: 'data-groups', id: 'groups', data: { groups } });
+  }
+  return { sites, results, best, groups };
 }

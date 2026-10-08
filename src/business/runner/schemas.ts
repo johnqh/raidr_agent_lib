@@ -555,3 +555,28 @@ export const pickBestSchema = z.object({
     .optional()
     .transform(v => text(v, 500) ?? ''),
 });
+
+// =============================================================================
+// dedupe-results
+// =============================================================================
+
+/** `dedupe` output. Ids are checked against the results by the caller. */
+export const dedupeSchema = z.object({
+  groups: lenientArray(
+    z.object({
+      members: lenientArray(
+        z.object({
+          id: z
+            .unknown()
+            .transform(v => (typeof v === 'string' ? v.trim() : '')),
+          note: z
+            .unknown()
+            .optional()
+            .transform(v => text(v, 120) ?? ''),
+        }),
+        20
+      ),
+    }),
+    50
+  ),
+});

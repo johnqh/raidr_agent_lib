@@ -199,15 +199,15 @@ describe('runSites', () => {
   });
 
   it('stops after maxSteps, and skips unknown tools and bad arguments', async () => {
-    const forever = {
+    const round = (page: number) => ({
       done: false,
       calls: [
-        { tool: 'search_recipes', arguments: '{}' },
-        { tool: 'nope', arguments: '{}' },
+        { tool: 'search_recipes', arguments: JSON.stringify({ page }) },
+        { tool: 'nope', arguments: JSON.stringify({ page }) },
         { tool: 'get_recipe', arguments: 'not json' },
       ],
-    };
-    const model = ai([forever, forever, forever, forever, forever, forever]);
+    });
+    const model = ai([1, 2, 3, 4, 5, 6].map(round));
     let n = 0;
     const { connector } = sites(
       () => (n++, { ok: true, httpStatus: 200, text: '[]' })
@@ -221,6 +221,65 @@ describe('runSites', () => {
     );
     expect(model.seen.filter(s => s.step === 'plan')).toHaveLength(2);
     expect(n).toBe(2);
+  });
+
+  it('skips a call already made, and stops when a round only repeats', async () => {
+    const search = (args: object) => ({
+      tool: 'search_recipes',
+      arguments: JSON.stringify(args),
+    });
+    const model = ai([
+      { done: false, calls: [search({ q: 'pad thai', limit: 10 })] },
+      {
+        done: false,
+        // Same arguments in another key order, plus one new call.
+        calls: [search({ limit: 10, q: 'pad thai' }), search({ q: 'noodles' })],
+      },
+      { done: false, calls: [search({ q: 'noodles' })] },
+      { done: false, calls: [search({ q: 'never reached' })] },
+    ]);
+    const made: unknown[] = [];
+    const { connector } = sites(
+      (_tool, args) => (
+        made.push(args),
+        { ok: true, httpStatus: 200, text: '[]' }
+      )
+    );
+    const { writer } = collector();
+    await runSites(input, writer, { ai: model, catalog, connector });
+    expect(made).toEqual([{ q: 'pad thai', limit: 10 }, { q: 'noodles' }]);
+    expect(model.seen.filter(s => s.step === 'plan')).toHaveLength(3);
+  });
+
+  it('gives extraction the intent details and the form inputs', async () => {
+    const model = ai([
+      { done: false, calls: [{ tool: 'search_recipes', arguments: '{}' }] },
+    ]);
+    const { connector } = sites(() => ({
+      ok: true,
+      httpStatus: 200,
+      text: '[]',
+    }));
+    const { writer } = collector();
+    const when = { text: 'tonight', start: '2026-10-08T18:00:00-07:00' };
+    await runSites(
+      {
+        ...input,
+        intent: { ...input.intent, when, how: 'vegan' },
+        inputs: { keyword: 'pad thai' },
+      },
+      writer,
+      { ai: model, catalog, connector }
+    );
+    const extract = model.seen.find(s => s.step === 'extract')!.input;
+    expect(extract).toMatchObject({
+      query: 'pad thai',
+      what: 'find a recipe',
+      how: 'vegan',
+      when,
+      where: null,
+      inputs: { keyword: 'pad thai' },
+    });
   });
 
   it('stops planning once the signal is aborted', async () => {
@@ -538,6 +597,70 @@ describe('runSites (v2: context, prepared tools, inputs, page URLs, best)', () =
     expect(model.seen.some(s => s.step === 'pick-best')).toBe(false);
     // A bare manifest catalog: no routes, so no page URLs.
     expect(outcome.results[0]!.pageUrl).toBe('');
+  });
+
+  it('an `all` run merges duplicates and streams data-groups; other modes do not', async () => {
+    const steps: string[] = [];
+    let ids: string[] = [];
+    const model: AiTransport = {
+      async invoke(step, payload) {
+        steps.push(step);
+        if (step === 'plan')
+          return steps.filter(s => s === 'plan').length === 1
+            ? {
+                done: false,
+                calls: [{ tool: 'search_recipes', arguments: '{}' }],
+              }
+            : { done: true, calls: [] };
+        if (step === 'extract')
+          return {
+            items: [
+              { title: 'Pad thai', summary: '' },
+              { title: 'Pad Thai (again)', summary: '' },
+            ],
+          };
+        if (step === 'dedupe') {
+          ids = (payload.results as Array<{ id: string }>).map(r => r.id);
+          return {
+            groups: [
+              { members: ids.map((id, i) => ({ id, note: `copy ${i}` })) },
+            ],
+          };
+        }
+        return { bestId: '', reason: '' };
+      },
+    };
+    const { connector } = sites(() => ({
+      ok: true,
+      httpStatus: 200,
+      text: '[]',
+    }));
+    const { parts, writer } = collector();
+    const outcome = await runSites(input, writer, {
+      ai: model,
+      catalog,
+      connector,
+    });
+    expect(outcome.groups).toEqual([
+      {
+        members: [
+          { resultId: ids[0], note: 'copy 0' },
+          { resultId: ids[1], note: 'copy 1' },
+        ],
+      },
+    ]);
+    expect(parts.find(p => p.type === 'data-groups')?.data).toEqual({
+      groups: outcome.groups,
+    });
+
+    steps.length = 0;
+    const best = await runSites(
+      { ...input, intent: { ...input.intent, selection: 'best' } },
+      collector().writer,
+      { ai: model, catalog, connector }
+    );
+    expect(best.groups).toEqual([]);
+    expect(steps).not.toContain('dedupe');
   });
 
   it('flags a site whose every call was refused with 401/403', async () => {

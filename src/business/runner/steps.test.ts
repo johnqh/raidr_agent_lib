@@ -12,6 +12,7 @@ import {
   type AiTransport,
   MAX_RANKED_SITES,
   mergeForm,
+  dedupeResults,
   pickBest,
   prepareSites,
   rankSites,
@@ -194,6 +195,58 @@ const candidate = (apiHost: string): CandidateSite => ({
 });
 
 describe('rankSites', () => {
+  it("shows each candidate's most relevant tools when given a catalog", async () => {
+    const { ai, seen } = scripted({ 'rank-sites': { sites: [] } });
+    const tool = (name: string, description: string, params: string[]) => ({
+      name,
+      description,
+      inputSchema: {
+        type: 'object',
+        properties: Object.fromEntries(
+          params.map(p => [p, { type: 'string' }])
+        ),
+      },
+      request: { method: 'GET', pathTemplate: `/${name}` },
+    });
+    const catalog = {
+      manifest: async (apiHost: string) => {
+        if (apiHost === 'broken.example') throw new Error('gone');
+        return {
+          apiHost,
+          tools: [
+            tool('post_comment', 'Post a comment', ['content']),
+            tool('search_events', 'Search events', ['query', 'date']),
+          ],
+        } as never;
+      },
+    };
+    await rankSites(
+      ai,
+      {
+        request: 'events tonight',
+        intent,
+        candidates: [candidate('a.example'), candidate('broken.example')],
+      },
+      catalog
+    );
+    const sites = (seen[0]!.input as { sites: Array<Record<string, unknown>> })
+      .sites;
+    expect(sites[0]!.tools).toEqual([
+      {
+        name: 'search_events',
+        description: 'Search events',
+        params: ['query', 'date'],
+      },
+      {
+        name: 'post_comment',
+        description: 'Post a comment',
+        params: ['content'],
+      },
+    ]);
+    // A manifest that fails to load just leaves the tools out.
+    expect(sites[1]).not.toHaveProperty('tools');
+  });
+
   it('keeps only known sites, in the model order, with reasons', async () => {
     const { ai, seen } = scripted({
       'rank-sites': {
@@ -576,5 +629,90 @@ describe('pickBest', () => {
       await pickBest(ai, { request: 'r', intent, results: [] })
     ).toBeNull();
     expect(seen).toHaveLength(0);
+  });
+});
+
+describe('dedupeResults', () => {
+  const result = (id: string, apiHost = 'a'): ResultItem => ({
+    id,
+    apiHost,
+    siteTitle: apiHost.toUpperCase(),
+    title: `T ${id}`,
+    summary: '',
+    imageUrl: '',
+    sourceUrl: '',
+    pageUrl: '',
+    recipe: null,
+    fields: [{ label: 'Price', value: '$1' }],
+  });
+
+  it('keeps known ids once, groups of two or more, in result order', async () => {
+    const { ai, seen } = scripted({
+      dedupe: {
+        groups: [
+          {
+            members: [
+              { id: 'c', note: '$90 · Section B' },
+              { id: 'a', note: '$85 · GA' },
+              { id: 'ghost', note: 'not a result' },
+            ],
+          },
+          // 'a' is already taken; 'b' alone is not a group.
+          { members: [{ id: 'a' }, { id: 'b', note: 'x' }] },
+          { members: [{ id: 'd' }, { id: 'e', note: '  ' }] },
+          'junk',
+        ],
+      },
+    });
+    const groups = await dedupeResults(ai, {
+      request: 'r',
+      intent,
+      results: ['a', 'b', 'c', 'd', 'e'].map((id, i) =>
+        result(id, i % 2 ? 'b.example' : 'a.example')
+      ),
+    });
+    expect(groups).toEqual([
+      {
+        members: [
+          { resultId: 'a', note: '$85 · GA' },
+          { resultId: 'c', note: '$90 · Section B' },
+        ],
+      },
+      {
+        members: [
+          { resultId: 'd', note: '' },
+          { resultId: 'e', note: '' },
+        ],
+      },
+    ]);
+    expect(seen[0]!.input.results).toContainEqual({
+      id: 'b',
+      site: 'B.EXAMPLE',
+      title: 'T b',
+      summary: '',
+      fields: [{ label: 'Price', value: '$1' }],
+    });
+  });
+
+  it('merges nothing for one result, a model error or a bad answer', async () => {
+    const one = scripted({});
+    expect(
+      await dedupeResults(one.ai, {
+        request: 'r',
+        intent,
+        results: [result('a')],
+      })
+    ).toEqual([]);
+    expect(one.seen).toHaveLength(0);
+    for (const answer of [new Error('down'), 'nonsense', { groups: 'no' }]) {
+      const { ai } = scripted({ dedupe: answer });
+      expect(
+        await dedupeResults(ai, {
+          request: 'r',
+          intent,
+          results: [result('a'), result('b')],
+        })
+      ).toEqual([]);
+    }
   });
 });

@@ -7,6 +7,7 @@ import {
   type AgentIntent,
   type BestData,
   type CallData,
+  type ResultGroup,
   type ResultItem,
   RUN_IMPORT_LIMITS,
   type RunImportRequest,
@@ -44,6 +45,7 @@ export function createLocalRunRecorder(
   const calls = new Map<string, CallData>();
   const results = new Map<string, ResultItem>();
   let best: BestData | null = null;
+  let groups: ResultGroup[] = [];
 
   const record = (part: RunPart) => {
     switch (part.type) {
@@ -63,6 +65,9 @@ export function createLocalRunRecorder(
         break;
       case 'data-best':
         best = part.data;
+        break;
+      case 'data-groups':
+        groups = part.data.groups;
         break;
       default:
         break;
@@ -105,6 +110,12 @@ export function createLocalRunRecorder(
         results: kept,
         best:
           chosen && kept.some(r => r.id === chosen.resultId) ? chosen : null,
+        // A group survives only with two or more of its results uploaded.
+        groups: groups
+          .map(g => ({
+            members: g.members.filter(m => kept.some(r => r.id === m.resultId)),
+          }))
+          .filter(g => g.members.length > 1),
       };
     },
   };

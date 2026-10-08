@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import { AGENT_STEPS, type AgentStep } from '@sudobility/raidr_agent_types';
 import {
+  dedupeSchema,
   extractItemSchema,
   extractSchema,
   pickBestSchema,
@@ -27,6 +28,7 @@ const ZOD: Record<AgentStep, z.ZodObject> = {
   plan: planSchema,
   extract: extractSchema,
   'pick-best': pickBestSchema,
+  dedupe: dedupeSchema,
 };
 
 /** The JSON object and the zod object name the same keys; zod's must-have keys are JSON-required. */
