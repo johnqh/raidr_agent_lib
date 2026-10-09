@@ -14,6 +14,7 @@ import {
   mergeForm,
   dedupeResults,
   pickBest,
+  planSearch,
   prepareSites,
   rankSites,
   type SiteContextSource,
@@ -194,7 +195,121 @@ const candidate = (apiHost: string): CandidateSite => ({
   authStyle: 'none',
 });
 
+describe('planSearch', () => {
+  it('sends the request, intent and region, and returns the plan', async () => {
+    const { ai, seen } = scripted({
+      'plan-search': {
+        search: true,
+        country: 'US',
+        query: 'taylor swift tickets',
+        reason: 'A named artist',
+      },
+    });
+    const plan = await planSearch(ai, {
+      request: ' Taylor Swift concert tickets ',
+      intent,
+      country: 'US',
+      locale: 'en-US',
+    });
+    expect(plan).toEqual({
+      country: 'US',
+      query: 'taylor swift tickets',
+      reason: 'A named artist',
+    });
+    expect(seen[0]).toEqual({
+      step: 'plan-search',
+      input: {
+        request: 'Taylor Swift concert tickets',
+        intent,
+        country: 'US',
+        locale: 'en-US',
+      },
+    });
+  });
+
+  it('is null when searching does not help, or the answer is unusable', async () => {
+    const no = scripted({
+      'plan-search': {
+        search: false,
+        country: '',
+        query: '',
+        reason: 'Generic',
+      },
+    });
+    expect(
+      await planSearch(no.ai, { request: 'events around me', intent })
+    ).toBeNull();
+    const noQuery = scripted({
+      'plan-search': { search: true, country: 'US', query: ' ', reason: '' },
+    });
+    expect(await planSearch(noQuery.ai, { request: 'r', intent })).toBeNull();
+    const down = scripted({ 'plan-search': new Error('model down') });
+    expect(await planSearch(down.ai, { request: 'r', intent })).toBeNull();
+    expect(
+      await planSearch(scripted({ 'plan-search': 'nonsense' }).ai, {
+        request: 'r',
+        intent,
+      })
+    ).toBeNull();
+  });
+
+  it("searches the user's region when the model names none", async () => {
+    const answer = {
+      search: true,
+      country: 'China',
+      query: '周杰伦 门票',
+      reason: '',
+    };
+    const cn = await planSearch(scripted({ 'plan-search': answer }).ai, {
+      request: 'r',
+      intent,
+      country: 'cn',
+    });
+    expect(cn?.country).toBe('CN');
+    const anywhere = await planSearch(scripted({ 'plan-search': answer }).ai, {
+      request: 'r',
+      intent,
+    });
+    expect(anywhere?.country).toBeNull();
+    const jp = await planSearch(
+      scripted({ 'plan-search': { ...answer, country: 'jp' } }).ai,
+      { request: 'r', intent, country: 'US' }
+    );
+    expect(jp?.country).toBe('JP');
+  });
+});
+
 describe('rankSites', () => {
+  it('shows search results found on a candidate', async () => {
+    const { ai, seen } = scripted({ 'rank-sites': { sites: [] } });
+    const hit = (n: number) => ({
+      url: `https://www.ticketmaster.com/e/${n}`,
+      title: `Taylor Swift ${n}`,
+      snippet: 's'.repeat(400),
+    });
+    await rankSites(ai, {
+      request: 'r',
+      intent,
+      candidates: [
+        {
+          apiHost: 'app.ticketmaster.com',
+          title: 'Ticketmaster',
+          description: '',
+          labels: ['events'],
+          siteOrigins: ['https://www.ticketmaster.com'],
+          toolCount: 9,
+          authStyle: 'none',
+          searchHits: [hit(1), hit(2), hit(3), hit(4)],
+        },
+      ],
+    });
+    const sites = seen[0]!.input.sites as Array<{
+      searchHits?: Array<{ snippet: string }>;
+    }>;
+    expect(sites[0]!.searchHits).toHaveLength(3);
+    expect(sites[0]!.searchHits![0]!.snippet).toHaveLength(300);
+  });
+
   it("shows each candidate's most relevant tools when given a catalog", async () => {
     const { ai, seen } = scripted({ 'rank-sites': { sites: [] } });
     const tool = (name: string, description: string, params: string[]) => ({

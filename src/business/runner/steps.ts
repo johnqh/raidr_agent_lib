@@ -16,6 +16,7 @@ import type {
   ResultGroup,
   ResultGroupMember,
   ResultItem,
+  SearchPlan,
   SitePlan,
   ToolAuth,
 } from '@sudobility/raidr_agent_types';
@@ -28,7 +29,9 @@ import {
   prepareSchema,
   rankSitesSchema,
   toAgentIntent,
+  toSearchPlan,
 } from './schemas';
+import { MAX_HITS_PER_SITE } from './search';
 
 // =============================================================================
 // understand
@@ -68,6 +71,42 @@ export async function understandIntent(
   } catch {
     throw new Error('The model did not understand the request');
   }
+}
+
+// =============================================================================
+// plan-search
+// =============================================================================
+
+export interface PlanSearchInput {
+  request: string;
+  intent: AgentIntent;
+  country?: string;
+  locale?: string;
+}
+
+/**
+ * `plan-search`: whether to search the web before choosing sites, where and
+ * for what. A request for one specific thing (an artist's concert tickets)
+ * gets a plan; a generic one ("events around me") gets null. Optional: a
+ * model error or an unusable answer is null too, and the flow goes on
+ * without searching.
+ */
+export async function planSearch(
+  ai: AiTransport,
+  input: PlanSearchInput
+): Promise<SearchPlan | null> {
+  let output: unknown;
+  try {
+    output = await ai.invoke('plan-search', {
+      request: input.request.trim(),
+      intent: input.intent,
+      ...(input.country ? { country: input.country } : {}),
+      ...(input.locale ? { locale: input.locale } : {}),
+    });
+  } catch {
+    return null;
+  }
+  return toSearchPlan(output, input.country);
 }
 
 // =============================================================================
@@ -144,6 +183,15 @@ export async function rankSites(
       description: c.description,
       labels: c.labels,
       toolCount: c.toolCount,
+      ...(c.searchHits?.length
+        ? {
+            searchHits: c.searchHits.slice(0, MAX_HITS_PER_SITE).map(h => ({
+              url: h.url,
+              title: h.title.slice(0, 200),
+              snippet: h.snippet.slice(0, 300),
+            })),
+          }
+        : {}),
       ...(tools[i]?.length ? { tools: tools[i] } : {}),
     })),
   });

@@ -33,12 +33,21 @@ export {
   dedupeSchema,
   pickBestSchema,
   planSchema,
+  planSearchSchema,
   prepareSchema,
   rankSitesSchema,
   toAgentIntent,
   toFormField,
+  toSearchPlan,
   understandOutputSchema,
 } from './schemas';
+export {
+  hitOrigin,
+  MAX_HITS_PER_SITE,
+  MAX_SEARCH_HITS,
+  mergeSearchCandidates,
+  searchOrigins,
+} from './search';
 export { STEP_ENDPOINTS, STEP_SCHEMAS } from './stepSchemas';
 export {
   buildPageUrl,
@@ -59,6 +68,8 @@ export {
   mergeForm,
   pickBest,
   type PickBestInput,
+  planSearch,
+  type PlanSearchInput,
   prepareSites,
   type PrepareSitesInput,
   rankSites,

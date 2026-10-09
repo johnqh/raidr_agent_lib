@@ -7,6 +7,7 @@ import {
   extractSchema,
   pickBestSchema,
   planSchema,
+  planSearchSchema,
   prepareSchema,
   rankSitesSchema,
   STEP_ENDPOINTS,
@@ -23,6 +24,7 @@ type Json = {
 
 const ZOD: Record<AgentStep, z.ZodObject> = {
   understand: understandOutputSchema,
+  'plan-search': planSearchSchema,
   'rank-sites': rankSitesSchema,
   prepare: prepareSchema,
   plan: planSchema,
@@ -147,6 +149,13 @@ describe('STEP_SCHEMAS', () => {
     expect(pickBestSchema.parse(pick)).toEqual(pick);
     const rank = { sites: [{ apiHost: 'a.example', reason: 'Fits' }] };
     expect(rankSitesSchema.parse(rank)).toEqual(rank);
+    const search = {
+      search: true,
+      country: 'CN',
+      query: '周杰伦 演唱会 门票',
+      reason: 'A named artist',
+    };
+    expect(planSearchSchema.parse(search)).toEqual(search);
     const plan = { done: false, calls: [{ tool: 't', arguments: '{}' }] };
     expect(planSchema.parse(plan)).toEqual(plan);
   });

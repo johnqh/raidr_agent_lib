@@ -23,6 +23,7 @@ import {
   type IntentWho,
   RESULT_KINDS,
   type ResultKind,
+  type SearchPlan,
   SELECTION_MODES,
   type SelectionMode,
   type SiteLogin,
@@ -291,6 +292,46 @@ export const rankSitesSchema = z.object({
     50
   ),
 });
+
+// =============================================================================
+// plan-search
+// =============================================================================
+
+/** An ISO 3166-1 alpha-2 code, upper-cased, or null. */
+function countryCode(value: unknown): string | null {
+  return typeof value === 'string' && /^[a-z]{2}$/i.test(value.trim())
+    ? value.trim().toUpperCase()
+    : null;
+}
+
+export const planSearchSchema = z.object({
+  search: z
+    .unknown()
+    .optional()
+    .transform(v => v === true || v === 'true'),
+  country: z.unknown().optional().transform(countryCode),
+  query: optionalText(200),
+  reason: optionalText(300),
+});
+
+/**
+ * The `plan-search` answer as a {@link SearchPlan}, or null when the model
+ * chose not to search, gave no query, or answered something unusable.
+ */
+export function toSearchPlan(
+  output: unknown,
+  country?: string
+): SearchPlan | null {
+  const parsed = planSearchSchema.safeParse(output);
+  if (!parsed.success) return null;
+  const { search, country: region, query, reason } = parsed.data;
+  if (!search || !query) return null;
+  return {
+    query,
+    country: region ?? countryCode(country),
+    reason: reason ?? '',
+  };
+}
 
 // =============================================================================
 // prepare-site

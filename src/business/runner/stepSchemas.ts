@@ -16,6 +16,7 @@ type Json = Record<string, unknown>;
 /** The hosted endpoint name of each step (raidr_agent_api can override them per env). */
 export const STEP_ENDPOINTS: Record<AgentStep, string> = {
   understand: 'understand-intent',
+  'plan-search': 'plan-search',
   'rank-sites': 'rank-sites',
   prepare: 'prepare-site',
   plan: 'plan-calls',
@@ -215,6 +216,43 @@ const understandOutput: Json = {
 };
 
 // =============================================================================
+// plan-search
+// =============================================================================
+
+const planSearchInput: Json = {
+  type: 'object',
+  properties: {
+    request: str("The user's request."),
+    intent: intentInput,
+    country: str("ISO 3166-1 alpha-2 of the user's region."),
+    locale: str("BCP 47 locale of the user's device, e.g. en-US."),
+  },
+  required: ['request', 'intent'],
+};
+
+const planSearchOutput: Json = {
+  type: 'object',
+  properties: {
+    search: {
+      type: 'boolean',
+      description:
+        'true when a web search first would find the sites that have this specific thing (a named artist, team, show, product, place or brand); false for a generic request a site category answers (events near me, cheap flights, restaurants).',
+    },
+    country: str(
+      "ISO 3166-1 alpha-2 of the region whose web to search, usually the user's country (CN searches Chinese sites); empty to search worldwide or when search is false."
+    ),
+    query: str(
+      'The search query, short, in the language people in that region search in (e.g. "taylor swift tickets", "周杰伦 演唱会 门票" for CN). Empty when search is false.',
+      { maxLength: 200 }
+    ),
+    reason: str('One short sentence: why searching first helps, or why not.', {
+      maxLength: 300,
+    }),
+  },
+  required: ['search', 'country', 'query', 'reason'],
+};
+
+// =============================================================================
 // rank-sites
 // =============================================================================
 
@@ -235,6 +273,20 @@ const rankInput: Json = {
           description: str('What the site is.'),
           labels: { type: 'array', items: { type: 'string' } },
           toolCount: { type: 'integer', description: 'Number of API tools.' },
+          searchHits: {
+            type: 'array',
+            description:
+              'Web search results for the request that are on this site (title, URL, snippet). Present only when the request was searched first; a hit means the site has this specific thing.',
+            items: {
+              type: 'object',
+              properties: {
+                url: str('Result URL.'),
+                title: str('Result title.'),
+                snippet: str('Result snippet.'),
+              },
+              required: ['url', 'title'],
+            },
+          },
           tools: {
             type: 'array',
             description:
@@ -714,6 +766,7 @@ const dedupeOutput: Json = {
 /** Input and output JSON Schemas of every step's endpoint. */
 export const STEP_SCHEMAS: Record<AgentStep, { input: Json; output: Json }> = {
   understand: { input: understandInput, output: understandOutput },
+  'plan-search': { input: planSearchInput, output: planSearchOutput },
   'rank-sites': { input: rankInput, output: rankOutput },
   prepare: { input: prepareInput, output: prepareOutput },
   plan: { input: planInput, output: planOutput },

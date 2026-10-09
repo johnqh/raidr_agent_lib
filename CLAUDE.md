@@ -66,14 +66,25 @@ Node imports, no `URL` class. The `./runner` subpath imports only `zod`,
 `@sudobility/raidr_types` and types, so the API can use it without react.
 
 Steps (one ShapeShyft endpoint each, through `AiTransport.invoke(step, input)`;
-`AgentStep` = `understand | rank-sites | prepare | plan | extract | pick-best`):
+`AgentStep` = `understand | plan-search | rank-sites | prepare | plan | extract | pick-best | dedupe`):
 
 - `understandIntent(ai, { request, vocabulary?, country?, locale?, timeZone?, now? }): Promise<AgentIntent>`
   — six W's + `selection`, normalised by `toAgentIntent` (unknown W's → null,
   unknown selection → `all`, `location_needed = where.kind === 'current'`).
+- `planSearch(ai, { request, intent, country?, locale? }): Promise<SearchPlan | null>`
+  — `plan-search`: whether a web search should come first (a specific named
+  thing yes, a generic or nearby request no), its `query` and `country`
+  (the model's, else the user's, else null = worldwide). Optional: a model
+  error or an unusable answer is null. `toSearchPlan` / `planSearchSchema`.
+  The search runs in raidr_agent_api; `./search` has the pure parts:
+  `hitOrigin`, `searchOrigins(hits, max = MAX_SEARCH_HITS)` and
+  `mergeSearchCandidates(searchFound, labelFound, hits)` (search finds first,
+  deduped by apiHost, each with ≤ `MAX_HITS_PER_SITE` `searchHits` matched by
+  `isOnSite`).
 - `rankSites(ai, { request, intent, country?, candidates }): Promise<CandidateSite[]>`
   — model order, only input apiHosts, deduped, ≤12, `reason` set; an unusable
-  answer keeps the candidates' order.
+  answer keeps the candidates' order. A candidate's `searchHits` (≤3, snippet
+  ≤300) go to the model with it.
 - `prepareSites(ai, catalog: SiteContextSource | SiteCatalog, { request, intent, location?, sites }): Promise<PrepareResponse>`
   — per site: tools checked against the manifest (≤6, else the 3 best-ranked),
   `login` forced `none` when `manifest.auth.style === 'none'`, `unsupported`
